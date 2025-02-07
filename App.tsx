@@ -1,117 +1,156 @@
-/**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
- */
-
-import React from 'react';
-import type {PropsWithChildren} from 'react';
+import React, { useState } from 'react';
 import {
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  useColorScheme,
   View,
+  Text,
+  TextInput,
+  Button,
+  FlatList,
+  StyleSheet,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
+import axios from 'axios';
+import { getAccessToken } from './api';
+import { FoodItem, FoodSearchResponse } from './types';
 
-import {
-  Colors,
-  DebugInstructions,
-  Header,
-  LearnMoreLinks,
-  ReloadInstructions,
-} from 'react-native/Libraries/NewAppScreen';
+const App = () => {
+  const [query, setQuery] = useState('');
+  const [foodList, setFoodList] = useState<FoodItem[]>([]);
+  const [loading, setLoading] = useState(false);
 
-type SectionProps = PropsWithChildren<{
-  title: string;
-}>;
+  const fetchFoodData = async () => {
+    if (!query.trim()) {
+      Alert.alert('Error', 'Please enter a search term');
+      return;
+    }
 
-function Section({children, title}: SectionProps): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
-  return (
-    <View style={styles.sectionContainer}>
-      <Text
-        style={[
-          styles.sectionTitle,
-          {
-            color: isDarkMode ? Colors.white : Colors.black,
+    setLoading(true);
+    try {
+      const token = await getAccessToken();
+      const response = await axios.get<FoodSearchResponse>(
+        'https://platform.fatsecret.com/rest/server.api',
+        {
+          params: {
+            method: 'foods.search',
+            format: 'json',
+            search_expression: query,
+            max_results: 50,
           },
-        ]}>
-        {title}
-      </Text>
-      <Text
-        style={[
-          styles.sectionDescription,
-          {
-            color: isDarkMode ? Colors.light : Colors.dark,
+          headers: {
+            Authorization: `Bearer ${token}`,
           },
-        ]}>
-        {children}
-      </Text>
-    </View>
-  );
-}
+        }
+      );
 
-function App(): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
-
-  const backgroundStyle = {
-    backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
+      const foods = response.data.foods.food;
+      setFoodList(Array.isArray(foods) ? foods : [foods]);
+    } catch (error) {
+      console.error('Error fetching food data:', error);
+      Alert.alert(
+        'Error',
+        'Failed to fetch food data. Please try again later.'
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
-  return (
-    <SafeAreaView style={backgroundStyle}>
-      <StatusBar
-        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-        backgroundColor={backgroundStyle.backgroundColor}
-      />
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        style={backgroundStyle}>
-        <Header />
-        <View
-          style={{
-            backgroundColor: isDarkMode ? Colors.black : Colors.white,
-          }}>
-          <Section title="Step One">
-            Edit <Text style={styles.highlight}>App.tsx</Text> to change this
-            screen and then come back to see your edits.
-          </Section>
-          <Section title="See Your Changes">
-            <ReloadInstructions />
-          </Section>
-          <Section title="Debug">
-            <DebugInstructions />
-          </Section>
-          <Section title="Learn More">
-            Read the docs to discover what to do next:
-          </Section>
-          <LearnMoreLinks />
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+  const renderFoodItem = ({ item }: { item: FoodItem }) => (
+    <View style={styles.foodItem}>
+      <Text style={styles.foodName}>{item.food_name}</Text>
+      {item.brand_name && (
+        <Text style={styles.brandName}>Brand: {item.brand_name}</Text>
+      )}
+      {item.food_description && (
+        <Text style={styles.description}>{item.food_description}</Text>
+      )}
+    </View>
   );
-}
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.searchContainer}>
+        <TextInput
+          placeholder="Search food..."
+          value={query}
+          onChangeText={setQuery}
+          style={styles.input}
+          onSubmitEditing={fetchFoodData}
+          returnKeyType="search"
+        />
+        <Button
+          title="Search"
+          onPress={fetchFoodData}
+          disabled={loading}
+        />
+      </View>
+
+      {loading ? (
+        <ActivityIndicator size="large" style={styles.loader} />
+      ) : (
+        <FlatList
+          data={foodList}
+          keyExtractor={(item) => item.food_id}
+          renderItem={renderFoodItem}
+          style={styles.list}
+          ListEmptyComponent={
+            <Text style={styles.emptyText}>
+              No foods found. Try searching for something else.
+            </Text>
+          }
+        />
+      )}
+    </View>
+  );
+};
 
 const styles = StyleSheet.create({
-  sectionContainer: {
-    marginTop: 32,
-    paddingHorizontal: 24,
+  container: {
+    flex: 1,
+    padding: 20,
+    backgroundColor: '#fff',
   },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: '600',
+  searchContainer: {
+    flexDirection: 'row',
+    marginBottom: 20,
   },
-  sectionDescription: {
-    marginTop: 8,
-    fontSize: 18,
-    fontWeight: '400',
+  input: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 5,
+    padding: 10,
+    marginRight: 10,
   },
-  highlight: {
-    fontWeight: '700',
+  list: {
+    flex: 1,
+  },
+  foodItem: {
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  foodName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  brandName: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 4,
+  },
+  description: {
+    fontSize: 14,
+    color: '#444',
+    marginTop: 4,
+  },
+  loader: {
+    marginTop: 20,
+  },
+  emptyText: {
+    textAlign: 'center',
+    marginTop: 20,
+    color: '#666',
   },
 });
 
